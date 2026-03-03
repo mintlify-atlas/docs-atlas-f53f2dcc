@@ -30,15 +30,20 @@ import promgleam/registry
 import promgleam/metrics/counter
 
 pub fn main() {
-  let assert Ok(counter) = 
-    counter.new(
-      name: "http_requests_total",
+  let assert Ok(_) = 
+    counter.create_counter(
       registry: "default",
+      name: "http_requests_total",
       help: "Total HTTP requests",
       labels: []
     )
   
-  counter.inc(counter, 1.0)
+  let assert Ok(_) = counter.increment_counter(
+    registry: "default",
+    name: "http_requests_total",
+    labels: [],
+    value: 1
+  )
   
   let metrics_text = registry.print_as_text(registry_name: "default")
   // Returns text format metrics
@@ -68,15 +73,20 @@ import promgleam/registry
 import promgleam/metrics/gauge
 
 pub fn main() {
-  let assert Ok(gauge) = 
-    gauge.new(
-      name: "temperature",
+  let assert Ok(_) = 
+    gauge.create_gauge(
       registry: "default",
+      name: "temperature",
       help: "Current temperature",
       labels: []
     )
   
-  gauge.set(gauge, 23.5)
+  let assert Ok(_) = gauge.set_gauge(
+    registry: "default",
+    name: "temperature",
+    labels: [],
+    value: 23
+  )
   
   let metrics_protobuf = registry.print_as_protobuf(registry_name: "default")
   // Returns binary protobuf data
@@ -107,15 +117,20 @@ import promgleam/metrics/counter
 
 pub fn main() {
   // Register some metrics
-  let assert Ok(counter) = 
-    counter.new(
-      name: "requests",
+  let assert Ok(_) = 
+    counter.create_counter(
       registry: "default",
+      name: "requests",
       help: "Request count",
       labels: []
     )
   
-  counter.inc(counter, 5.0)
+  let assert Ok(_) = counter.increment_counter(
+    registry: "default",
+    name: "requests",
+    labels: [],
+    value: 5
+  )
   
   // Clear all metrics from the registry
   registry.clear_registry("default")
