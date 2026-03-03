@@ -1,0 +1,98 @@
+---
+title: Gauge
+description: API reference for gauge metrics in PromGleam
+---
+
+A gauge is a metric that represents a single numerical value that can arbitrarily go up and down.
+
+Gauges are typically used for measured values like temperatures or current memory usage, but also "counts" that can go up and down, like the number of concurrent requests.
+
+## create_gauge
+
+Creates a new Gauge metric.
+
+```gleam
+pub fn create_gauge(
+  registry registry: String,
+  name name: String,
+  help help: String,
+  labels labels: List(String),
+) -> Result(Nil, String)
+```
+
+<ParamField path="registry" type="String" required>
+  The name of the registry to create the gauge in (typically "default").
+</ParamField>
+
+<ParamField path="name" type="String" required>
+  The name of the gauge metric.
+</ParamField>
+
+<ParamField path="help" type="String" required>
+  A description of what the gauge measures.
+</ParamField>
+
+<ParamField path="labels" type="List(String)" required>
+  A list of label names for this metric. The order matters and must match when setting values.
+</ParamField>
+
+### Returns
+
+- `Ok(Nil)` if the gauge was created successfully
+- `Error(String)` with an error message if creation failed (e.g., "Metric already exists")
+
+### Example
+
+```gleam
+create_gauge(
+  registry: "default",
+  name: "cache_size",
+  help: "Number of items in the cache",
+  labels: [ "cache_name" ],
+)
+```
+
+## set_gauge
+
+Sets the value of the Gauge.
+
+```gleam
+pub fn set_gauge(
+  registry registry: String,
+  name name: String,
+  labels labels: List(String),
+  value value: Int,
+) -> Result(Nil, String)
+```
+
+<ParamField path="registry" type="String" required>
+  The name of the registry where the gauge exists.
+</ParamField>
+
+<ParamField path="name" type="String" required>
+  The name of the gauge metric to set.
+</ParamField>
+
+<ParamField path="labels" type="List(String)" required>
+  A list of label values for this observation. Must match the number and order of labels defined when creating the gauge.
+</ParamField>
+
+<ParamField path="value" type="Int" required>
+  The value to set the gauge to. Can be any integer value.
+</ParamField>
+
+### Returns
+
+- `Ok(Nil)` if the gauge was set successfully
+- `Error(String)` with an error message if the operation failed (e.g., "Unknown metric" or "Invalid metric arity (labels mismatch)")
+
+### Example
+
+```gleam
+set_gauge(
+  registry: "default",
+  name: "cache_size",
+  labels: [ "image_cache" ],
+  value: 123,
+)
+```

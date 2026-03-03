@@ -1,0 +1,94 @@
+---
+title: Buckets
+description: Utility functions to generate buckets for Histogram metrics
+---
+
+The `buckets` module provides utility functions to generate bucket configurations for Histogram metrics. Buckets define the upper bounds for grouping observed values.
+
+## Types
+
+### Buckets
+
+```gleam
+pub type Buckets = List(Float)
+```
+
+A list of floats representing the upper bounds of histogram buckets.
+
+## Functions
+
+### exponential
+
+Creates `count` buckets, where the lowest bucket has an upper bound of `start` and each following bucket's upper bound is `factor` times the previous bucket's upper bound.
+
+```gleam
+pub fn exponential(
+  start start: Float,
+  factor factor: Int,
+  count count: Int,
+) -> Result(Buckets, String)
+```
+
+<ParamField path="start" type="Float" required>
+  The upper bound of the lowest bucket
+</ParamField>
+
+<ParamField path="factor" type="Int" required>
+  The multiplier applied to each subsequent bucket's upper bound
+</ParamField>
+
+<ParamField path="count" type="Int" required>
+  The number of buckets to create
+</ParamField>
+
+#### Returns
+
+`Result(Buckets, String)` - A result containing either the list of bucket upper bounds or an error message.
+
+#### Example
+
+```gleam
+import promgleam/buckets
+
+pub fn main() {
+  let assert Ok([1.0, 2.0, 4.0, 8.0]) = buckets.exponential(start: 1.0, factor: 2, count: 4)
+}
+```
+
+### linear
+
+Creates `count` buckets, each `step` wide, where the lowest bucket has an upper bound of `start`.
+
+```gleam
+pub fn linear(
+  start start: Float,
+  step step: Float,
+  count count: Int,
+) -> Result(Buckets, String)
+```
+
+<ParamField path="start" type="Float" required>
+  The upper bound of the lowest bucket
+</ParamField>
+
+<ParamField path="step" type="Float" required>
+  The width of each bucket (added to each subsequent upper bound)
+</ParamField>
+
+<ParamField path="count" type="Int" required>
+  The number of buckets to create
+</ParamField>
+
+#### Returns
+
+`Result(Buckets, String)` - A result containing either the list of bucket upper bounds or an error message.
+
+#### Example
+
+```gleam
+import promgleam/buckets
+
+pub fn main() {
+  let assert Ok([1.0, 4.0, 7.0, 10.0]) = buckets.linear(start: 1.0, step: 3.0, count: 4)
+}
+```

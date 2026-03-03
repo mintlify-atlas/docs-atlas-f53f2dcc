@@ -1,0 +1,116 @@
+---
+title: Metrics overview
+description: Learn about the different Prometheus metric types available in PromGleam
+---
+
+PromGleam provides support for the core Prometheus metric types. Understanding which metric type to use is essential for effective monitoring and observability.
+
+## Metric types
+
+Prometheus defines four core metric types that serve different purposes:
+
+<Steps>
+  <Step title="Counter">
+    A cumulative metric that represents a single monotonically increasing counter whose value can only increase or be reset to zero on restart. Use counters for metrics like:
+    - Total number of HTTP requests served
+    - Total number of tasks completed
+    - Total number of errors
+  </Step>
+
+  <Step title="Gauge">
+    A metric that represents a single numerical value that can arbitrarily go up and down. Use gauges for metrics like:
+    - Current memory usage
+    - Number of concurrent requests
+    - Temperature readings
+    - Cache size
+  </Step>
+
+  <Step title="Histogram">
+    A metric that samples observations (usually things like request durations or response sizes) and counts them in configurable buckets. It also provides a sum of all observed values. Use histograms for:
+    - Request duration
+    - Response sizes
+    - Query execution times
+  </Step>
+
+  <Step title="Summary">
+    Similar to histograms but calculates configurable quantiles over a sliding time window. Summaries are not yet supported in PromGleam.
+  </Step>
+</Steps>
+
+<Warning>
+  Do not use a counter to expose a value that can decrease. For example, do not use a counter for the number of currently running processes; instead use a gauge.
+</Warning>
+
+## Registries
+
+All metrics in PromGleam are registered in a named registry. The most common registry name is `"default"`, but you can create and use multiple registries to organize your metrics.
+
+```gleam
+import promgleam/metrics/counter.{create_counter, increment_counter}
+
+// Create a metric in the default registry
+create_counter(
+  registry: "default",
+  name: "http_requests_total",
+  help: "Total number of HTTP requests",
+  labels: ["method", "route", "status"],
+)
+```
+
+## Labels
+
+Labels allow you to partition your metrics into multiple dimensions. When you create a metric, you specify the label names. When you record a measurement, you provide the label values.
+
+<Info>
+  The order of label values must match the order of label names defined when creating the metric.
+</Info>
+
+```gleam
+import promgleam/metrics/counter.{create_counter, increment_counter}
+
+// Define labels when creating the metric
+create_counter(
+  registry: "default",
+  name: "http_requests_total",
+  help: "Total number of HTTP requests",
+  labels: ["method", "route", "status"],
+)
+
+// Provide label values in the same order when recording
+increment_counter(
+  registry: "default",
+  name: "http_requests_total",
+  labels: ["GET", "/api/users", "200"],
+  value: 1,
+)
+```
+
+## Naming conventions
+
+Follow these best practices when naming your metrics:
+
+- Use snake_case for metric names
+- Include the unit of measurement in the metric name (e.g., `_seconds`, `_bytes`, `_total`)
+- Use descriptive names that clearly indicate what is being measured
+- Add `_total` suffix to counters
+
+<Tip>
+  For time-based metrics, use seconds as the base unit. Prometheus best practices recommend using base units (seconds, bytes, etc.) rather than multiples (milliseconds, kilobytes, etc.).
+</Tip>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Counters" icon="arrow-up" href="/guides/counters">
+    Learn how to use counter metrics
+  </Card>
+  <Card title="Gauges" icon="gauge" href="/guides/gauges">
+    Learn how to use gauge metrics
+  </Card>
+  <Card title="Histograms" icon="chart-histogram" href="/guides/histograms">
+    Learn how to use histogram metrics
+  </Card>
+  <Card title="Registries" icon="database" href="/guides/registries">
+    Learn how to manage registries
+  </Card>
+</CardGroup>

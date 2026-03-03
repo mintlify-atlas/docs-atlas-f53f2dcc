@@ -1,0 +1,182 @@
+---
+title: Counters
+description: Learn how to create and increment counter metrics in PromGleam
+---
+
+A counter is a cumulative metric that represents a single monotonically increasing counter whose value can only increase or be reset to zero on restart.
+
+## When to use counters
+
+Use counters to track:
+- Total number of HTTP requests served
+- Total number of tasks completed
+- Total number of errors
+- Total bytes sent or received
+
+<Warning>
+  Do not use a counter to expose a value that can decrease. For example, do not use a counter for the number of currently running processes; instead use a gauge.
+</Warning>
+
+## Creating a counter
+
+Use the `create_counter` function to create a new counter metric. You need to specify the registry name, metric name, help text, and label names.
+
+```gleam
+import promgleam/metrics/counter.{create_counter}
+
+create_counter(
+  registry: "default",
+  name: "http_requests_total",
+  help: "Total number of HTTP requests",
+  labels: ["method", "route", "status"],
+)
+```
+
+### Parameters
+
+- **registry**: The name of the registry to register the metric in (commonly `"default"`)
+- **name**: The metric name (should end with `_total` for counters)
+- **help**: A description of what the metric measures
+- **labels**: A list of label names for this metric
+
+<Info>
+  The `create_counter` function returns `Result(Nil, String)`. If the metric already exists, you'll get an error.
+</Info>
+
+## Incrementing a counter
+
+Once you've created a counter, use the `increment_counter` function to increase its value. You must provide label values that match the label names defined when creating the counter.
+
+```gleam
+import promgleam/metrics/counter.{increment_counter}
+
+increment_counter(
+  registry: "default",
+  name: "http_requests_total",
+  labels: ["GET", "/", "200"],
+  value: 1,
+)
+```
+
+### Parameters
+
+- **registry**: The registry name (must match the one used when creating the counter)
+- **name**: The metric name (must match the one used when creating the counter)
+- **labels**: Label values in the same order as the label names
+- **value**: The amount to increment (must be a positive integer)
+
+<Warning>
+  The number of label values must match the number of label names defined when creating the counter. If they don't match, you'll get an `InvalidMetricArity` error.
+</Warning>
+
+## Complete example
+
+Here's a complete example showing how to create and use a counter to track HTTP requests:
+
+```gleam
+import promgleam/metrics/counter.{create_counter, increment_counter}
+
+pub fn setup_metrics() {
+  // Create the counter once during application startup
+  let assert Ok(Nil) = create_counter(
+    registry: "default",
+    name: "http_requests_total",
+    help: "Total number of HTTP requests",
+    labels: ["method", "route", "status"],
+  )
+}
+
+pub fn handle_request(method: String, route: String) {
+  // Your request handling logic here
+  let status = "200"
+  
+  // Increment the counter after processing the request
+  let assert Ok(Nil) = increment_counter(
+    registry: "default",
+    name: "http_requests_total",
+    labels: [method, route, status],
+    value: 1,
+  )
+}
+```
+
+## Error handling
+
+Both `create_counter` and `increment_counter` return a `Result` type. Here are common errors you might encounter:
+
+<Tabs>
+  <Tab title="Metric already exists">
+    When trying to create a counter that already exists:
+    
+    ```gleam
+    case create_counter(
+      registry: "default",
+      name: "http_requests_total",
+      help: "Total number of HTTP requests",
+      labels: ["method"],
+    ) {
+      Ok(Nil) -> io.println("Counter created successfully")
+      Error(msg) -> io.println("Error: " <> msg)
+      // Error: Metric already exists
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Unknown metric">
+    When trying to increment a counter that doesn't exist:
+    
+    ```gleam
+    case increment_counter(
+      registry: "default",
+      name: "nonexistent_counter",
+      labels: [],
+      value: 1,
+    ) {
+      Ok(Nil) -> io.println("Counter incremented")
+      Error(msg) -> io.println("Error: " <> msg)
+      // Error: Unknown metric: nonexistent_counter
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Invalid arity">
+    When the number of label values doesn't match the number of label names:
+    
+    ```gleam
+    case increment_counter(
+      registry: "default",
+      name: "http_requests_total",
+      labels: ["GET", "/"],  // Missing status label
+      value: 1,
+    ) {
+      Ok(Nil) -> io.println("Counter incremented")
+      Error(msg) -> io.println("Error: " <> msg)
+      // Error: Invalid metric arity (labels mismatch): given 2, expected 3
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Best practices
+
+<Steps>
+  <Step title="Create counters once">
+    Create your counters during application initialization, not on every request.
+  </Step>
+  
+  <Step title="Use descriptive names">
+    Always end counter names with `_total` and make them descriptive: `http_requests_total`, `errors_total`, `bytes_sent_total`.
+  </Step>
+  
+  <Step title="Keep labels consistent">
+    Always provide label values in the same order as defined when creating the counter.
+  </Step>
+  
+  <Step title="Avoid high cardinality">
+    Don't use unique values (like user IDs or timestamps) as label values, as this creates too many time series.
+  </Step>
+</Steps>
+
+<Tip>
+  Most counters should be incremented by 1, but you can increment by larger values when tracking things like bytes transferred or batch operations.
+</Tip>

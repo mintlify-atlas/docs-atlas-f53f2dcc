@@ -1,0 +1,85 @@
+---
+title: Introduction
+description: A Prometheus client library for Gleam that makes monitoring your applications simple and type-safe
+---
+
+PromGleam is a [Prometheus](https://prometheus.io) client library for Gleam, built on top of the battle-tested [prometheus.erl](https://github.com/deadtrickster/prometheus.erl). It provides a type-safe, idiomatic Gleam interface for instrumenting your applications with Prometheus metrics.
+
+## Why PromGleam?
+
+PromGleam brings Prometheus monitoring to the Gleam ecosystem with:
+
+- **Type-safe metrics** - Leverage Gleam's type system to catch errors at compile time
+- **Simple API** - Clean, intuitive functions for creating and updating metrics
+- **Full metric support** - Counters, gauges, and histograms with all their features
+- **Production ready** - Built on prometheus.erl, used in production Erlang systems
+- **Easy integration** - Works seamlessly with Gleam web frameworks like Wisp
+
+## Quick example
+
+Here's how simple it is to track HTTP requests with PromGleam:
+
+```gleam
+import promgleam/metrics/counter.{create_counter, increment_counter}
+
+// Create a counter metric
+create_counter(
+  registry: "default",
+  name: "http_requests_total",
+  help: "Total number of HTTP requests",
+  labels: ["method", "route", "status"],
+)
+
+// Increment it when handling requests
+increment_counter(
+  registry: "default",
+  name: "http_requests_total",
+  labels: ["GET", "/", "200"],
+  value: 1,
+)
+```
+
+## Get started
+
+<CardGroup cols={2}>
+  <Card
+    title="Installation"
+    icon="download"
+    href="/installation"
+  >
+    Install PromGleam in your project with a single command
+  </Card>
+  <Card
+    title="Quickstart"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Create your first counter metric in under 5 minutes
+  </Card>
+  <Card
+    title="Metric types"
+    icon="chart-line"
+    href="/guides/metrics-overview"
+  >
+    Learn about counters, gauges, and histograms
+  </Card>
+  <Card
+    title="Examples"
+    icon="code"
+    href="/examples/wisp-integration"
+  >
+    Explore real-world integration examples
+  </Card>
+</CardGroup>
+
+## Supported metric types
+
+PromGleam supports all Prometheus metric types:
+
+- **Counters** - Monotonically increasing values for tracking totals (requests, errors, tasks)
+- **Gauges** - Values that can go up or down (temperature, memory usage, active connections)
+- **Histograms** - Distribution of observations with configurable buckets (request duration, response sizes)
+
+## What's next?
+
+Ready to add metrics to your Gleam application? Start with the [installation guide](/installation) or jump straight into the [quickstart tutorial](/quickstart).

@@ -1,0 +1,282 @@
+---
+title: Registries
+description: Learn how to manage metric registries and export metrics in PromGleam
+---
+
+Metric registries are containers that hold all your metrics. PromGleam allows you to create and manage multiple registries, export their contents, and clear them when needed.
+
+## What is a registry?
+
+A registry is a named collection of metrics. When you create a metric, you specify which registry it belongs to. The most commonly used registry name is `"default"`, but you can create as many registries as you need.
+
+<Info>
+  All metrics in PromGleam must belong to a registry. The registry name is specified when creating each metric.
+</Info>
+
+## Using the default registry
+
+Most applications use a single registry named `"default"`:
+
+```gleam
+import promgleam/metrics/counter.{create_counter, increment_counter}
+import promgleam/metrics/gauge.{create_gauge, set_gauge}
+
+pub fn setup_metrics() {
+  // All metrics use the "default" registry
+  let assert Ok(Nil) = create_counter(
+    registry: "default",
+    name: "http_requests_total",
+    help: "Total HTTP requests",
+    labels: ["method"],
+  )
+  
+  let assert Ok(Nil) = create_gauge(
+    registry: "default",
+    name: "active_connections",
+    help: "Number of active connections",
+    labels: [],
+  )
+}
+```
+
+## Multiple registries
+
+You can use multiple registries to organize metrics by purpose or expose different metrics to different endpoints:
+
+```gleam
+import promgleam/metrics/counter.{create_counter}
+import promgleam/metrics/gauge.{create_gauge}
+
+pub fn setup_metrics() {
+  // Business metrics in one registry
+  let assert Ok(Nil) = create_counter(
+    registry: "business",
+    name: "orders_total",
+    help: "Total number of orders",
+    labels: ["status"],
+  )
+  
+  // System metrics in another registry
+  let assert Ok(Nil) = create_gauge(
+    registry: "system",
+    name: "memory_usage_bytes",
+    help: "Current memory usage",
+    labels: [],
+  )
+}
+```
+
+<Tip>
+  Using separate registries can be useful when you want to expose public metrics and private/internal metrics through different endpoints.
+</Tip>
+
+## Exporting metrics
+
+PromGleam provides two functions to export metrics from a registry:
+
+<Tabs>
+  <Tab title="Text format">
+    Use `print_as_text` to export metrics in Prometheus text format:
+    
+    ```gleam
+    import promgleam/registry.{print_as_text}
+    
+    pub fn metrics_endpoint() -> String {
+      print_as_text(registry_name: "default")
+    }
+    ```
+    
+    This returns a `String` in the [Prometheus text-based exposition format](https://github.com/prometheus/docs/blob/main/content/docs/instrumenting/exposition_formats.md#text-format-example):
+    
+    ```
+    # HELP http_requests_total Total HTTP requests
+    # TYPE http_requests_total counter
+    http_requests_total{method="GET"} 1027
+    http_requests_total{method="POST"} 312
+    ```
+  </Tab>
+  
+  <Tab title="Protobuf format">
+    Use `print_as_protobuf` to export metrics in Prometheus protobuf format:
+    
+    ```gleam
+    import promgleam/registry.{print_as_protobuf}
+    
+    pub fn metrics_endpoint() -> BitArray {
+      print_as_protobuf(registry_name: "default")
+    }
+    ```
+    
+    This returns a `BitArray` in the [Prometheus protobuf exposition format](https://github.com/prometheus/docs/blob/main/content/docs/instrumenting/exposition_formats.md#protobuf-format).
+  </Tab>
+</Tabs>
+
+<Note>
+  The text format is more common and easier to debug. Use protobuf format when you need better performance or smaller payload sizes.
+</Note>
+
+## Complete web server example
+
+Here's a complete example showing how to expose metrics via an HTTP endpoint:
+
+```gleam
+import promgleam/metrics/counter.{create_counter, increment_counter}
+import promgleam/registry.{print_as_text}
+import gleam/http/response.{Response}
+import gleam/bytes_builder
+
+pub fn setup() {
+  let assert Ok(Nil) = create_counter(
+    registry: "default",
+    name: "http_requests_total",
+    help: "Total number of HTTP requests",
+    labels: ["method", "route", "status"],
+  )
+}
+
+pub fn handle_request(method: String, route: String) -> Response(String) {
+  case route {
+    "/metrics" -> metrics_endpoint()
+    _ -> {
+      // Handle the request
+      let response = handle_route(route)
+      
+      // Record the metric
+      let assert Ok(Nil) = increment_counter(
+        registry: "default",
+        name: "http_requests_total",
+        labels: [method, route, "200"],
+        value: 1,
+      )
+      
+      response
+    }
+  }
+}
+
+fn metrics_endpoint() -> Response(String) {
+  let metrics_text = print_as_text(registry_name: "default")
+  
+  Response(
+    status: 200,
+    headers: [("content-type", "text/plain; version=0.0.4")],
+    body: metrics_text,
+  )
+}
+
+fn handle_route(route: String) -> Response(String) {
+  // Your route handling logic
+  Response(status: 200, headers: [], body: "OK")
+}
+```
+
+<Info>
+  The recommended content-type for Prometheus text format is `text/plain; version=0.0.4`.
+</Info>
+
+## Clearing a registry
+
+Use `clear_registry` to remove all metrics from a registry:
+
+```gleam
+import promgleam/registry.{clear_registry}
+
+pub fn reset_metrics() {
+  clear_registry("default")
+}
+```
+
+<Warning>
+  Clearing a registry removes all metric definitions, not just their values. You'll need to recreate metrics after clearing.
+</Warning>
+
+## Common use cases
+
+<Steps>
+  <Step title="Single registry">
+    Most applications use a single `"default"` registry for all metrics:
+    
+    ```gleam
+    // Create all metrics in "default"
+    create_counter(registry: "default", ...)
+    create_gauge(registry: "default", ...)
+    
+    // Export all metrics from "default"
+    print_as_text(registry_name: "default")
+    ```
+  </Step>
+  
+  <Step title="Public and private metrics">
+    Separate public metrics (exposed to Prometheus) from private metrics (internal only):
+    
+    ```gleam
+    // Public metrics
+    create_counter(registry: "public", name: "requests_total", ...)
+    
+    // Private metrics
+    create_gauge(registry: "private", name: "internal_cache_size", ...)
+    
+    // Only expose public metrics
+    print_as_text(registry_name: "public")
+    ```
+  </Step>
+  
+  <Step title="Per-component registries">
+    Organize metrics by component or service:
+    
+    ```gleam
+    create_counter(registry: "api", name: "api_requests_total", ...)
+    create_counter(registry: "database", name: "db_queries_total", ...)
+    create_counter(registry: "cache", name: "cache_hits_total", ...)
+    ```
+  </Step>
+  
+  <Step title="Testing">
+    Clear registry between tests:
+    
+    ```gleam
+    pub fn teardown() {
+      clear_registry("test")
+    }
+    ```
+  </Step>
+</Steps>
+
+## Integration with Prometheus
+
+To scrape metrics from your application, configure Prometheus to scrape your `/metrics` endpoint:
+
+```yaml
+scrape_configs:
+  - job_name: 'my_gleam_app'
+    static_configs:
+      - targets: ['localhost:8080']
+    metrics_path: '/metrics'
+```
+
+<Info>
+  Prometheus will periodically send HTTP GET requests to your `/metrics` endpoint. Return the result of `print_as_text()` with the content-type header set correctly.
+</Info>
+
+## Best practices
+
+- Use the `"default"` registry unless you have a specific reason to use multiple registries
+- Export metrics on a dedicated `/metrics` endpoint
+- Set the correct content-type header: `text/plain; version=0.0.4`
+- Only clear registries during testing, not in production
+- Create all metrics during application startup, before handling requests
+- Consider using separate registries for public vs. internal metrics
+
+## Registry functions
+
+Here's a summary of all registry functions:
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `print_as_text(registry_name: String)` | `String` | Exports metrics in Prometheus text format |
+| `print_as_protobuf(registry_name: String)` | `BitArray` | Exports metrics in Prometheus protobuf format |
+| `clear_registry(name: String)` | `Nil` | Removes all metrics from the registry |
+
+<Tip>
+  There's no need to explicitly create a registry. Simply start creating metrics with a registry name, and the registry will be created automatically.
+</Tip>

@@ -1,0 +1,307 @@
+---
+title: Histograms
+description: Learn how to create and observe histogram metrics in PromGleam
+---
+
+A histogram samples observations (usually things like request durations or response sizes) and counts them in configurable buckets. It also provides a sum of all observed values.
+
+## When to use histograms
+
+Use histograms to track:
+- Request duration
+- Response sizes
+- Query execution times
+- File sizes
+- Any measurement where you want to understand the distribution
+
+<Info>
+  Histograms allow you to calculate percentiles (like p95, p99) in Prometheus using the `histogram_quantile()` function.
+</Info>
+
+## Creating a histogram
+
+Use the `create_histogram` function to create a new histogram metric. You need to specify the registry name, metric name, help text, label names, and buckets.
+
+```gleam
+import promgleam/metrics/histogram.{create_histogram}
+
+create_histogram(
+  registry: "default",
+  name: "http_request_duration_seconds",
+  help: "Duration of HTTP requests in seconds",
+  labels: ["method", "route", "status"],
+  buckets: [0.1, 0.25, 0.5, 1.0, 1.5],
+)
+```
+
+### Parameters
+
+- **registry**: The name of the registry to register the metric in (commonly `"default"`)
+- **name**: The metric name (should include the unit, typically `_seconds`)
+- **help**: A description of what the metric measures
+- **labels**: A list of label names for this metric
+- **buckets**: A list of bucket upper bounds (must be in ascending order)
+
+<Warning>
+  Buckets must be in ascending order and should cover the expected range of values. Use the `buckets` module to generate buckets programmatically.
+</Warning>
+
+## Observing values
+
+Once you've created a histogram, use the `observe_histogram` function to record observations. Each observation is counted in the appropriate bucket.
+
+```gleam
+import promgleam/metrics/histogram.{observe_histogram}
+
+observe_histogram(
+  registry: "default",
+  name: "http_request_duration_seconds",
+  labels: ["GET", "/", "200"],
+  value: 0.23,
+)
+```
+
+### Parameters
+
+- **registry**: The registry name (must match the one used when creating the histogram)
+- **name**: The metric name (must match the one used when creating the histogram)
+- **labels**: Label values in the same order as the label names
+- **value**: The observed value as a Float
+
+## Measuring function execution time
+
+PromGleam provides two helper functions to automatically measure and record function execution time:
+
+<Tabs>
+  <Tab title="measure_histogram">
+    Measures execution time in **milliseconds**:
+    
+    ```gleam
+    import promgleam/metrics/histogram.{measure_histogram}
+    
+    fn my_function_to_measure() {
+      use <- measure_histogram(
+        registry: "default",
+        name: "function_execution_time",
+        labels: ["my_function_to_measure"],
+      )
+    
+      // Do something slow here
+      slow_database_query()
+    
+      "return_value"
+    }
+    
+    let assert Ok("return_value") = my_function_to_measure()
+    ```
+  </Tab>
+  
+  <Tab title="measure_histogram_seconds">
+    Measures execution time in **seconds**:
+    
+    ```gleam
+    import promgleam/metrics/histogram.{measure_histogram_seconds}
+    
+    fn my_function_to_measure() {
+      use <- measure_histogram_seconds(
+        registry: "default",
+        name: "function_execution_time_seconds",
+        labels: ["my_function_to_measure"],
+      )
+    
+      // Do something slow here
+      slow_database_query()
+    
+      "return_value"
+    }
+    
+    let assert Ok("return_value") = my_function_to_measure()
+    ```
+  </Tab>
+</Tabs>
+
+<Tip>
+  Use `measure_histogram_seconds` for request durations following Prometheus best practices, which recommend using seconds as the base unit.
+</Tip>
+
+## Alternative usage pattern
+
+You can also use the measure functions by passing an existing function:
+
+```gleam
+import promgleam/metrics/histogram.{measure_histogram}
+
+fn my_function_to_measure() {
+  // Do something slow here
+  "return_value"
+}
+
+let assert Ok("return_value") =
+  my_function_to_measure
+  |> measure_histogram(
+    registry: "default",
+    name: "function_execution_time",
+    labels: ["my_function_to_measure"],
+    func: _
+  )
+```
+
+## Complete example
+
+Here's a complete example tracking HTTP request duration:
+
+```gleam
+import promgleam/metrics/histogram.{
+  create_histogram, measure_histogram_seconds,
+}
+import promgleam/buckets.{exponential}
+
+pub fn setup_metrics() {
+  // Generate buckets: 0.005, 0.01, 0.02, 0.04, 0.08, 0.16, 0.32 seconds
+  let assert Ok(duration_buckets) = exponential(
+    start: 0.005,
+    factor: 2,
+    count: 7,
+  )
+  
+  // Create the histogram once during application startup
+  let assert Ok(Nil) = create_histogram(
+    registry: "default",
+    name: "http_request_duration_seconds",
+    help: "Duration of HTTP requests in seconds",
+    labels: ["method", "route", "status"],
+    buckets: duration_buckets,
+  )
+}
+
+pub fn handle_request(method: String, route: String) {
+  use <- measure_histogram_seconds(
+    registry: "default",
+    name: "http_request_duration_seconds",
+    labels: [method, route, "200"],
+  )
+  
+  // Your request handling logic here
+  process_request()
+}
+
+fn process_request() {
+  // Request processing logic
+  Nil
+}
+```
+
+## Error handling
+
+Histogram functions return a `Result` type. Here are common errors:
+
+<Tabs>
+  <Tab title="Invalid buckets">
+    When buckets are not in ascending order or are invalid:
+    
+    ```gleam
+    case create_histogram(
+      registry: "default",
+      name: "request_duration",
+      help: "Request duration",
+      labels: [],
+      buckets: [1.0, 0.5, 2.0],  // Not in ascending order!
+    ) {
+      Ok(Nil) -> io.println("Histogram created")
+      Error(msg) -> io.println("Error: " <> msg)
+      // Error: Invalid buckets: ...
+    }
+    ```
+  </Tab>
+  
+  <Tab title="No buckets">
+    When an empty bucket list is provided:
+    
+    ```gleam
+    case create_histogram(
+      registry: "default",
+      name: "request_duration",
+      help: "Request duration",
+      labels: [],
+      buckets: [],  // Empty!
+    ) {
+      Ok(Nil) -> io.println("Histogram created")
+      Error(msg) -> io.println("Error: " <> msg)
+      // Error: No buckets were provided
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Unknown metric">
+    When observing a histogram that doesn't exist:
+    
+    ```gleam
+    case observe_histogram(
+      registry: "default",
+      name: "nonexistent_histogram",
+      labels: [],
+      value: 0.5,
+    ) {
+      Ok(Nil) -> io.println("Value observed")
+      Error(msg) -> io.println("Error: " <> msg)
+      // Error: Unknown metric: nonexistent_histogram
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Choosing buckets
+
+Choosing the right buckets is crucial for meaningful histogram data:
+
+<Steps>
+  <Step title="Know your range">
+    Understand the expected range of values. For HTTP requests, this might be 10ms to 5 seconds.
+  </Step>
+  
+  <Step title="Cover the range">
+    Ensure your buckets cover the full range, with the highest bucket above your expected maximum.
+  </Step>
+  
+  <Step title="Use exponential for wide ranges">
+    For values spanning multiple orders of magnitude (like request duration), use exponential buckets.
+  </Step>
+  
+  <Step title="Use linear for narrow ranges">
+    For values in a narrow range (like response sizes from 100-1000 bytes), use linear buckets.
+  </Step>
+</Steps>
+
+<Info>
+  See the [Buckets guide](/guides/buckets) for detailed information on generating buckets using the `exponential` and `linear` functions.
+</Info>
+
+## Best practices
+
+<Note>
+  - Always use base units: **seconds** for time, **bytes** for size
+  - Include the unit in the metric name: `_seconds`, `_bytes`
+  - Create histograms during initialization, not on every request
+  - Use `measure_histogram_seconds` for request/function duration
+  - Avoid too many buckets (typically 5-10 is sufficient)
+</Note>
+
+## Understanding histogram output
+
+When you export a histogram, Prometheus receives:
+
+1. **Bucket counts**: How many observations fell into each bucket
+2. **Sum**: The sum of all observed values
+3. **Count**: The total number of observations
+
+Example output:
+```
+http_request_duration_seconds_bucket{method="GET",route="/",status="200",le="0.1"} 150
+http_request_duration_seconds_bucket{method="GET",route="/",status="200",le="0.25"} 200
+http_request_duration_seconds_bucket{method="GET",route="/",status="200",le="0.5"} 245
+http_request_duration_seconds_bucket{method="GET",route="/",status="200",le="+Inf"} 250
+http_request_duration_seconds_sum{method="GET",route="/",status="200"} 53.5
+http_request_duration_seconds_count{method="GET",route="/",status="200"} 250
+```
+
+This data allows Prometheus to calculate percentiles using `histogram_quantile()`.

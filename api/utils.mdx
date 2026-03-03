@@ -1,0 +1,78 @@
+---
+title: Utils
+description: Utility functions to perform common tasks when dealing with metrics
+---
+
+The `utils` module provides utility functions for common tasks when working with metrics, such as measuring execution time.
+
+## Functions
+
+### measure
+
+Measures the execution time of a function in milliseconds, then returns that with the function return value in a tuple.
+
+```gleam
+pub fn measure(func: fn() -> anything) -> #(Int, anything)
+```
+
+<ParamField path="func" type="fn() -> anything" required>
+  A function with no arguments that returns any type. This function will be executed and timed.
+</ParamField>
+
+#### Returns
+
+`#(Int, anything)` - A tuple where the first element is the execution time in milliseconds (as an `Int`) and the second element is the return value of the function.
+
+#### Example
+
+```gleam
+import promgleam/utils
+import promgleam/metrics/histogram
+
+fn my_func() {
+  "wibble"
+}
+
+pub fn main() {
+  let assert #(time_taken, "wibble") = utils.measure(my_func)
+  // time_taken contains the execution time in milliseconds
+}
+```
+
+#### Example with histogram
+
+```gleam
+import promgleam/utils
+import promgleam/metrics/histogram
+import promgleam/buckets
+
+pub fn main() {
+  let assert Ok(buckets) = buckets.linear(start: 0.0, step: 100.0, count: 10)
+  
+  let assert Ok(histogram) = 
+    histogram.new(
+      name: "function_duration_ms",
+      registry: "default",
+      help: "Function execution time",
+      labels: [],
+      buckets: buckets
+    )
+  
+  let #(time_taken, result) = utils.measure(fn() {
+    // Some expensive operation
+    do_expensive_work()
+  })
+  
+  // Record the execution time in the histogram
+  histogram.observe(histogram, int_to_float(time_taken))
+}
+
+fn do_expensive_work() {
+  "done"
+}
+
+fn int_to_float(i: Int) -> Float {
+  // Convert int to float for histogram observation
+  i |> int.to_float()
+}
+```

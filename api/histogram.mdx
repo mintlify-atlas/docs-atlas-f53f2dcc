@@ -1,0 +1,248 @@
+---
+title: Histogram
+description: API reference for histogram metrics in PromGleam
+---
+
+A histogram samples observations (usually things like request durations or response sizes) and counts them in configurable buckets. It also provides a sum of all observed values.
+
+## create_histogram
+
+Creates a new Histogram metric.
+
+```gleam
+pub fn create_histogram(
+  registry registry: String,
+  name name: String,
+  help help: String,
+  labels labels: List(String),
+  buckets buckets: Buckets,
+) -> Result(Nil, String)
+```
+
+<ParamField path="registry" type="String" required>
+  The name of the registry to create the histogram in (typically "default").
+</ParamField>
+
+<ParamField path="name" type="String" required>
+  The name of the histogram metric.
+</ParamField>
+
+<ParamField path="help" type="String" required>
+  A description of what the histogram measures.
+</ParamField>
+
+<ParamField path="labels" type="List(String)" required>
+  A list of label names for this metric. The order matters and must match when observing values.
+</ParamField>
+
+<ParamField path="buckets" type="Buckets" required>
+  A list of bucket boundaries (floats) for the histogram. Values will be counted in buckets based on these boundaries.
+</ParamField>
+
+### Returns
+
+- `Ok(Nil)` if the histogram was created successfully
+- `Error(String)` with an error message if creation failed (e.g., "Metric already exists", "Invalid buckets", or "No buckets were provided")
+
+### Example
+
+```gleam
+create_histogram(
+  registry: "default",
+  name: "http_request_duration_seconds",
+  help: "Duration of HTTP requests in seconds",
+  labels: [ "method", "route", "status" ],
+  buckets: [ 0.1, 0.25, 0.5, 1.0, 1.5 ],
+)
+```
+
+## observe_histogram
+
+Observes a value in the Histogram.
+
+```gleam
+pub fn observe_histogram(
+  registry registry: String,
+  name name: String,
+  labels labels: List(String),
+  value value: Float,
+) -> Result(Nil, String)
+```
+
+<ParamField path="registry" type="String" required>
+  The name of the registry where the histogram exists.
+</ParamField>
+
+<ParamField path="name" type="String" required>
+  The name of the histogram metric to observe.
+</ParamField>
+
+<ParamField path="labels" type="List(String)" required>
+  A list of label values for this observation. Must match the number and order of labels defined when creating the histogram.
+</ParamField>
+
+<ParamField path="value" type="Float" required>
+  The value to observe in the histogram.
+</ParamField>
+
+### Returns
+
+- `Ok(Nil)` if the value was observed successfully
+- `Error(String)` with an error message if the operation failed (e.g., "Unknown metric" or "Invalid metric arity (labels mismatch)")
+
+### Example
+
+```gleam
+observe_histogram(
+  registry: "default",
+  name: "http_request_duration_seconds",
+  labels: [ "GET", "/", "200" ],
+  value: 0.23,
+)
+```
+
+## measure_histogram
+
+Measures a function execution time in milliseconds and observes that in the Histogram.
+
+```gleam
+pub fn measure_histogram(
+  registry registry: String,
+  name name: String,
+  labels labels: List(String),
+  func func: fn() -> anything,
+) -> Result(anything, String)
+```
+
+<ParamField path="registry" type="String" required>
+  The name of the registry where the histogram exists.
+</ParamField>
+
+<ParamField path="name" type="String" required>
+  The name of the histogram metric to observe the execution time in.
+</ParamField>
+
+<ParamField path="labels" type="List(String)" required>
+  A list of label values for this observation. Must match the number and order of labels defined when creating the histogram.
+</ParamField>
+
+<ParamField path="func" type="fn() -> anything" required>
+  The function to measure. Can return any type.
+</ParamField>
+
+### Returns
+
+- `Ok(anything)` with the return value of the function if measurement succeeded
+- `Error(String)` with an error message if the operation failed
+
+### Examples
+
+Using the `use` syntax:
+
+```gleam
+fn my_function_to_measure() {
+  use <- measure_histogram(
+    registry: "default",
+    name: "function_execution_time",
+    labels: [ "my_function_to_measure" ],
+  )
+
+  // Do something slow here
+
+  "return_value"
+}
+
+let assert Ok("return_value") = my_function_to_measure()
+```
+
+Using the pipe operator:
+
+```gleam
+fn my_function_to_measure() {
+  // Do something slow here
+
+  "return_value"
+}
+
+let assert Ok("return_value") =
+  my_function_to_measure
+  |> measure_histogram(
+    registry: "default",
+    name: "function_execution_time",
+    labels: [ "my_function_to_measure" ],
+    func: _
+  )
+```
+
+## measure_histogram_seconds
+
+Measures a function execution time in seconds and observes that in the Histogram.
+
+```gleam
+pub fn measure_histogram_seconds(
+  registry registry: String,
+  name name: String,
+  labels labels: List(String),
+  func func: fn() -> anything,
+) -> Result(anything, String)
+```
+
+<ParamField path="registry" type="String" required>
+  The name of the registry where the histogram exists.
+</ParamField>
+
+<ParamField path="name" type="String" required>
+  The name of the histogram metric to observe the execution time in.
+</ParamField>
+
+<ParamField path="labels" type="List(String)" required>
+  A list of label values for this observation. Must match the number and order of labels defined when creating the histogram.
+</ParamField>
+
+<ParamField path="func" type="fn() -> anything" required>
+  The function to measure. Can return any type.
+</ParamField>
+
+### Returns
+
+- `Ok(anything)` with the return value of the function if measurement succeeded
+- `Error(String)` with an error message if the operation failed
+
+### Examples
+
+Using the `use` syntax:
+
+```gleam
+fn my_function_to_measure() {
+  use <- measure_histogram_seconds(
+    registry: "default",
+    name: "function_execution_time",
+    labels: [ "my_function_to_measure" ],
+  )
+
+  // Do something slow here
+
+  "return_value"
+}
+
+let assert Ok("return_value") = my_function_to_measure()
+```
+
+Using the pipe operator:
+
+```gleam
+fn my_function_to_measure() {
+  // Do something slow here
+
+  "return_value"
+}
+
+let assert Ok("return_value") =
+  my_function_to_measure
+  |> measure_histogram_seconds(
+    registry: "default",
+    name: "function_execution_time",
+    labels: [ "my_function_to_measure" ],
+    func: _
+  )
+```

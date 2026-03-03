@@ -1,0 +1,312 @@
+---
+title: Buckets
+description: Learn how to generate buckets for histogram metrics using exponential and linear functions
+---
+
+When creating histograms, you need to define buckets that divide your observations into ranges. PromGleam provides utility functions to generate buckets programmatically.
+
+## Why buckets matter
+
+Buckets determine how your histogram data is organized. Each bucket represents an upper bound, and Prometheus counts how many observations fall into each range. Choosing appropriate buckets is essential for:
+
+- Calculating accurate percentiles (p50, p95, p99)
+- Understanding the distribution of your measurements
+- Avoiding data loss from values outside your bucket range
+
+<Tip>
+  Always include a bucket that's higher than your expected maximum value. Prometheus automatically adds a `+Inf` bucket to catch all values.
+</Tip>
+
+## Exponential buckets
+
+Use exponential buckets when your values span multiple orders of magnitude. This is common for metrics like request duration, where most requests are fast but some can be very slow.
+
+### Function signature
+
+```gleam
+import promgleam/buckets.{exponential}
+
+exponential(
+  start: Float,
+  factor: Int,
+  count: Int,
+) -> Result(Buckets, String)
+```
+
+### Parameters
+
+- **start**: The upper bound of the first bucket
+- **factor**: The multiplier for each subsequent bucket
+- **count**: The number of buckets to generate
+
+### How it works
+
+Each bucket's upper bound is calculated by multiplying the previous bucket by the factor:
+
+```
+Bucket 1: start
+Bucket 2: start × factor
+Bucket 3: start × factor²
+Bucket n: start × factor^(n-1)
+```
+
+### Examples
+
+<Tabs>
+  <Tab title="Request duration">
+    For HTTP request duration in seconds:
+    
+    ```gleam
+    import promgleam/buckets.{exponential}
+    
+    // Buckets: 0.005, 0.01, 0.02, 0.04, 0.08, 0.16, 0.32 seconds
+    let assert Ok(duration_buckets) = exponential(
+      start: 0.005,
+      factor: 2,
+      count: 7,
+    )
+    ```
+    
+    This covers request durations from 5ms to 320ms with exponentially growing buckets.
+  </Tab>
+  
+  <Tab title="Response size">
+    For HTTP response sizes in bytes:
+    
+    ```gleam
+    import promgleam/buckets.{exponential}
+    
+    // Buckets: 100.0, 1000.0, 10000.0, 100000.0 bytes
+    let assert Ok(size_buckets) = exponential(
+      start: 100.0,
+      factor: 10,
+      count: 4,
+    )
+    ```
+    
+    This covers response sizes from 100 bytes to 100KB.
+  </Tab>
+  
+  <Tab title="Basic example">
+    From the README:
+    
+    ```gleam
+    import promgleam/buckets.{exponential}
+    
+    let assert Ok([1.0, 2.0, 4.0, 8.0]) = exponential(
+      start: 1.0,
+      factor: 2,
+      count: 4,
+    )
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  Exponential buckets are ideal for request duration, query time, and other latency metrics where values can vary by orders of magnitude.
+</Note>
+
+## Linear buckets
+
+Use linear buckets when your values fall within a narrow, predictable range. This is common for metrics like queue length or percentage values.
+
+### Function signature
+
+```gleam
+import promgleam/buckets.{linear}
+
+linear(
+  start: Float,
+  step: Float,
+  count: Int,
+) -> Result(Buckets, String)
+```
+
+### Parameters
+
+- **start**: The upper bound of the first bucket
+- **step**: The amount to add for each subsequent bucket
+- **count**: The number of buckets to generate
+
+### How it works
+
+Each bucket's upper bound is calculated by adding the step to the previous bucket:
+
+```
+Bucket 1: start
+Bucket 2: start + step
+Bucket 3: start + (step × 2)
+Bucket n: start + (step × (n-1))
+```
+
+### Examples
+
+<Tabs>
+  <Tab title="Queue length">
+    For tracking queue length:
+    
+    ```gleam
+    import promgleam/buckets.{linear}
+    
+    // Buckets: 10.0, 20.0, 30.0, 40.0, 50.0
+    let assert Ok(queue_buckets) = linear(
+      start: 10.0,
+      step: 10.0,
+      count: 5,
+    )
+    ```
+    
+    This tracks queue lengths from 0-10, 10-20, 20-30, etc.
+  </Tab>
+  
+  <Tab title="Percentage">
+    For percentage-based metrics:
+    
+    ```gleam
+    import promgleam/buckets.{linear}
+    
+    // Buckets: 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0
+    let assert Ok(percentage_buckets) = linear(
+      start: 10.0,
+      step: 10.0,
+      count: 10,
+    )
+    ```
+  </Tab>
+  
+  <Tab title="Basic example">
+    From the README:
+    
+    ```gleam
+    import promgleam/buckets.{linear}
+    
+    let assert Ok([1.0, 4.0, 7.0, 10.0]) = linear(
+      start: 1.0,
+      step: 3.0,
+      count: 4,
+    )
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+  Linear buckets work well for queue sizes, cache hit rates, and any metric with a predictable range.
+</Note>
+
+## Using buckets with histograms
+
+Once you've generated buckets, pass them to `create_histogram`:
+
+```gleam
+import promgleam/buckets.{exponential}
+import promgleam/metrics/histogram.{create_histogram}
+
+pub fn setup_histogram() {
+  // Generate buckets
+  let assert Ok(duration_buckets) = exponential(
+    start: 0.005,
+    factor: 2,
+    count: 7,
+  )
+  
+  // Create histogram with generated buckets
+  let assert Ok(Nil) = create_histogram(
+    registry: "default",
+    name: "http_request_duration_seconds",
+    help: "Duration of HTTP requests in seconds",
+    labels: ["method", "route"],
+    buckets: duration_buckets,
+  )
+}
+```
+
+## Manual buckets
+
+You can also define buckets manually as a list of floats:
+
+```gleam
+import promgleam/metrics/histogram.{create_histogram}
+
+create_histogram(
+  registry: "default",
+  name: "http_request_duration_seconds",
+  help: "Duration of HTTP requests in seconds",
+  labels: ["method", "route"],
+  buckets: [0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
+)
+```
+
+<Warning>
+  Manual buckets must be in ascending order, or you'll get an "Invalid buckets" error.
+</Warning>
+
+## Choosing between exponential and linear
+
+Use this guide to choose the right bucket generation function:
+
+<Steps>
+  <Step title="Identify the range">
+    Determine the minimum and maximum expected values for your metric.
+  </Step>
+  
+  <Step title="Check the spread">
+    If the maximum is more than 10x the minimum, use exponential buckets. Otherwise, consider linear buckets.
+  </Step>
+  
+  <Step title="Consider the distribution">
+    If most values cluster at one end of the range, exponential buckets provide better granularity. If values are evenly distributed, use linear buckets.
+  </Step>
+  
+  <Step title="Test and adjust">
+    Monitor your histogram data in Prometheus and adjust bucket boundaries if needed.
+  </Step>
+</Steps>
+
+## Bucket recommendations by metric type
+
+| Metric Type | Recommended | Example |
+|-------------|-------------|----------|
+| Request duration | Exponential | `exponential(start: 0.005, factor: 2, count: 8)` |
+| Database query time | Exponential | `exponential(start: 0.001, factor: 4, count: 6)` |
+| Response size | Exponential | `exponential(start: 100.0, factor: 10, count: 5)` |
+| Queue length | Linear | `linear(start: 10.0, step: 10.0, count: 10)` |
+| Cache hit rate | Linear | `linear(start: 10.0, step: 10.0, count: 10)` |
+| Connection pool usage | Linear | `linear(start: 5.0, step: 5.0, count: 10)` |
+
+## Error handling
+
+Both functions return `Result(Buckets, String)`. Common errors include:
+
+```gleam
+import promgleam/buckets.{exponential, linear}
+
+// Invalid start value (must be positive)
+case exponential(start: -1.0, factor: 2, count: 5) {
+  Ok(buckets) -> buckets
+  Error(msg) -> panic as msg  // Error: Invalid buckets: ...
+}
+
+// Invalid factor (must be >= 1)
+case exponential(start: 1.0, factor: 0, count: 5) {
+  Ok(buckets) -> buckets
+  Error(msg) -> panic as msg  // Error: Invalid buckets: ...
+}
+
+// Invalid count (must be > 0)
+case linear(start: 1.0, step: 1.0, count: 0) {
+  Ok(buckets) -> buckets
+  Error(msg) -> panic as msg  // Error: Invalid buckets: ...
+}
+```
+
+<Info>
+  The error messages come from the underlying prometheus.erl library and provide details about what went wrong.
+</Info>
+
+## Best practices
+
+- Start with exponential buckets for duration metrics
+- Use 5-10 buckets for most histograms (more buckets = more memory)
+- Ensure your highest bucket is above your expected p99 value
+- Test bucket boundaries with real data and adjust as needed
+- Document your bucket choices for future reference

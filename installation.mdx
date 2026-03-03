@@ -1,0 +1,67 @@
+---
+title: Installation
+description: Install PromGleam and start monitoring your Gleam applications
+---
+
+Getting started with PromGleam is straightforward. You'll have metrics up and running in your project in just a few minutes.
+
+## Requirements
+
+Before installing PromGleam, make sure you have:
+
+- **Gleam** version 0.34.0 or higher
+- **Erlang/OTP** target (PromGleam uses prometheus.erl under the hood)
+
+<Note>
+PromGleam only supports the Erlang target. If you're building for JavaScript, you'll need a different metrics solution.
+</Note>
+
+## Install PromGleam
+
+<Steps>
+  <Step title="Add the package">
+    Add PromGleam to your project using the Gleam package manager:
+
+    ```sh
+    gleam add promgleam
+    ```
+
+    This will add the latest version of PromGleam to your `gleam.toml` file.
+  </Step>
+
+  <Step title="Verify installation">
+    Check that PromGleam was added to your dependencies in `gleam.toml`:
+
+    ```toml
+    [dependencies]
+    promgleam = ">= 0.2.0 and < 1.0.0"
+    ```
+  </Step>
+
+  <Step title="Import in your code">
+    You can now import PromGleam modules in your Gleam code:
+
+    ```gleam
+    import promgleam/metrics/counter
+    import promgleam/metrics/gauge
+    import promgleam/metrics/histogram
+    import promgleam/registry
+    ```
+  </Step>
+</Steps>
+
+## Dependencies
+
+When you install PromGleam, these dependencies are automatically installed:
+
+- **prometheus** (>= 4.11.0) - The underlying Erlang Prometheus client
+- **gleam_stdlib** (>= 0.34.0) - Gleam's standard library
+- **gleam_erlang** (>= 0.25.0) - Gleam's Erlang interop library
+
+<Info>
+You don't need to install or configure these dependencies manually. The Gleam package manager handles everything for you.
+</Info>
+
+## What's next?
+
+Now that you have PromGleam installed, continue to the [quickstart guide](/quickstart) to create your first metric.

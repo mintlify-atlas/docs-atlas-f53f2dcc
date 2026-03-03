@@ -1,0 +1,287 @@
+---
+title: Wisp integration
+description: Learn how to integrate PromGleam with the Wisp web framework to track HTTP metrics
+---
+
+This example shows how to add HTTP instrumentation using Prometheus metrics to measure response times and count incoming requests per route and status code in a Wisp application.
+
+## Overview
+
+You'll create:
+- A `http_requests_total` counter to track total HTTP requests
+- A `http_request_duration_seconds` histogram to measure request duration
+- Middleware to automatically record metrics for all requests
+- A `/metrics` endpoint to expose metrics in Prometheus format
+
+## Setup
+
+<Steps>
+  <Step title="Add dependencies">
+    Add PromGleam and Wisp to your `gleam.toml`:
+
+    ```toml
+    [dependencies]
+    gleam_stdlib = ">= 0.34.0 and < 2.0.0"
+    promgleam = ">= 0.2.0 and < 1.0.0"
+    wisp = ">= 0.15.0 and < 1.0.0"
+    mist = ">= 1.2.0 and < 2.0.0"
+    gleam_http = ">= 3.6.0 and < 4.0.0"
+    gleam_erlang = ">= 0.25.0 and < 1.0.0"
+    ```
+  </Step>
+
+  <Step title="Create the metrics module">
+    Create a new file `src/app/metrics.gleam` to handle all metrics logic:
+
+    ```gleam
+    import gleam/http
+    import gleam/int
+    import gleam/string
+    import promgleam/metrics/counter.{create_counter, increment_counter}
+    import promgleam/metrics/histogram.{create_histogram, observe_histogram}
+    import promgleam/registry.{print_as_text}
+    import promgleam/utils.{measure}
+    import wisp
+
+    const registry_name = "default"
+    const http_requests_total = "http_requests_total"
+    const http_request_duration_seconds = "http_request_duration_seconds"
+
+    /// Create standard HTTP metrics
+    pub fn create_standard_metrics() {
+      let assert Ok(_) =
+        create_counter(
+          registry: registry_name,
+          name: http_requests_total,
+          help: "Total number of HTTP requests",
+          labels: ["method", "route", "status"],
+        )
+
+      let assert Ok(_) =
+        create_histogram(
+          registry: registry_name,
+          name: http_request_duration_seconds,
+          help: "Duration of HTTP requests in seconds",
+          labels: ["method", "route", "status"],
+          buckets: [
+            0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0,
+            7.5, 10.0,
+          ],
+        )
+
+      Nil
+    }
+
+    /// Middleware to record HTTP metrics
+    pub fn record_http_metrics(
+      req: wisp.Request,
+      handle_request: fn() -> wisp.Response,
+    ) -> wisp.Response {
+      let route_name = get_route_name(req)
+      let #(time_taken, response) = measure(handle_request)
+      let time_taken_in_seconds = int.to_float(time_taken) /. 1000.0
+      let method = string.uppercase(http.method_to_string(req.method))
+
+      let assert Ok(_) =
+        increment_counter(
+          registry: registry_name,
+          name: http_requests_total,
+          labels: [method, route_name, int.to_string(response.status)],
+          value: 1,
+        )
+
+      let assert Ok(_) =
+        observe_histogram(
+          registry: registry_name,
+          name: http_request_duration_seconds,
+          labels: [method, route_name, int.to_string(response.status)],
+          value: time_taken_in_seconds,
+        )
+
+      response
+    }
+
+    /// Handler for the /metrics endpoint
+    pub fn print_metrics(req: wisp.Request) -> wisp.Response {
+      use <- wisp.require_method(req, http.Get)
+
+      let body = print_as_text(registry_name)
+
+      wisp.ok()
+      |> wisp.string_body(body)
+    }
+
+    /// Generate route labels for metrics
+    fn get_route_name(req: wisp.Request) -> String {
+      case wisp.path_segments(req) {
+        [] -> "/"
+        ["comments"] -> "/comments"
+        ["comments", _] -> "/comments:id"
+        ["metrics"] -> "/metrics"
+        _ -> req.path
+      }
+    }
+    ```
+
+    <Note>
+      The histogram buckets follow the [OpenTelemetry recommendation](https://opentelemetry.io/docs/specs/semconv/http/http-metrics/#metric-httpserverrequestduration) for HTTP request duration.
+    </Note>
+  </Step>
+
+  <Step title="Initialize metrics on startup">
+    In your main application file (`src/app.gleam`), initialize the metrics before starting the server:
+
+    ```gleam
+    import app/metrics.{create_standard_metrics}
+    import app/router
+    import gleam/erlang/process
+    import mist
+    import wisp
+
+    pub fn main() {
+      // Create the standard HTTP metrics
+      create_standard_metrics()
+
+      wisp.configure_logger()
+      let secret_key_base = wisp.random_string(64)
+
+      let assert Ok(_) =
+        wisp.mist_handler(router.handle_request, secret_key_base)
+        |> mist.new
+        |> mist.port(8000)
+        |> mist.start_http
+
+      process.sleep_forever()
+    }
+    ```
+  </Step>
+
+  <Step title="Add metrics middleware">
+    In your middleware chain (`src/app/web.gleam`), add the metrics recording middleware:
+
+    ```gleam
+    import app/metrics.{record_http_metrics}
+    import wisp
+
+    pub fn middleware(
+      req: wisp.Request,
+      handle_request: fn(wisp.Request) -> wisp.Response,
+    ) -> wisp.Response {
+      let req = wisp.method_override(req)
+      use <- wisp.log_request(req)
+      use <- wisp.rescue_crashes
+
+      // Record HTTP metrics for all requests
+      use <- record_http_metrics(req)
+
+      use req <- wisp.handle_head(req)
+
+      handle_request(req)
+    }
+    ```
+
+    <Info>
+      The middleware automatically measures execution time and records both request count and duration for every request that passes through it.
+    </Info>
+  </Step>
+
+  <Step title="Add the metrics endpoint">
+    In your router (`src/app/router.gleam`), add a route for the metrics endpoint:
+
+    ```gleam
+    import app/metrics.{print_metrics}
+    import app/web
+    import gleam/http.{Get, Post}
+    import wisp.{type Request, type Response}
+
+    pub fn handle_request(req: Request) -> Response {
+      use req <- web.middleware(req)
+
+      case wisp.path_segments(req) {
+        [] -> home_page(req)
+        ["comments"] -> comments(req)
+        ["comments", id] -> show_comment(req, id)
+        
+        // Expose metrics at /metrics
+        ["metrics"] -> print_metrics(req)
+        
+        _ -> wisp.not_found()
+      }
+    }
+    ```
+  </Step>
+</Steps>
+
+## Testing the integration
+
+Once you've set up the integration, you can test it:
+
+1. Start your server:
+   ```sh
+   gleam run
+   ```
+
+2. Make some requests to your application:
+   ```sh
+   curl http://localhost:8000/
+   curl http://localhost:8000/comments
+   curl http://localhost:8000/comments/1
+   ```
+
+3. Check the metrics at `http://localhost:8000/metrics`:
+   ```sh
+   curl http://localhost:8000/metrics
+   ```
+
+You should see output similar to:
+
+```
+# HELP http_requests_total Total number of HTTP requests
+# TYPE http_requests_total counter
+http_requests_total{method="GET",route="/",status="200"} 1
+http_requests_total{method="GET",route="/comments",status="200"} 1
+http_requests_total{method="GET",route="/comments:id",status="200"} 1
+
+# HELP http_request_duration_seconds Duration of HTTP requests in seconds
+# TYPE http_request_duration_seconds histogram
+http_request_duration_seconds_bucket{method="GET",route="/",status="200",le="0.005"} 1
+http_request_duration_seconds_bucket{method="GET",route="/",status="200",le="0.01"} 1
+http_request_duration_seconds_sum{method="GET",route="/",status="200"} 0.002
+http_request_duration_seconds_count{method="GET",route="/",status="200"} 1
+```
+
+## Key concepts
+
+### Route labeling
+
+The `get_route_name()` function groups requests by route patterns rather than exact paths. This prevents high cardinality issues in your metrics:
+
+```gleam
+fn get_route_name(req: wisp.Request) -> String {
+  case wisp.path_segments(req) {
+    [] -> "/"
+    ["comments"] -> "/comments"
+    ["comments", _] -> "/comments:id"  // Groups all comment IDs together
+    _ -> req.path
+  }
+}
+```
+
+<Note>
+  Always use route patterns (like `/comments:id`) instead of actual paths (like `/comments/123`) to avoid creating too many unique metric series.
+</Note>
+
+### Measuring execution time
+
+The `measure()` utility function from PromGleam measures how long the request handler takes to execute:
+
+```gleam
+let #(time_taken, response) = measure(handle_request)
+let time_taken_in_seconds = int.to_float(time_taken) /. 1000.0
+```
+
+This gives you accurate duration metrics for each request.
+
+## Complete example
+
+You can find a complete working example in the [PromGleam repository](https://github.com/MystPi/promgleam/tree/main/examples/wisp).

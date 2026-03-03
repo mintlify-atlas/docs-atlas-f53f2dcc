@@ -1,0 +1,125 @@
+---
+title: Registry
+description: Functions to interact with a metric registry
+---
+
+The `registry` module provides functions for managing and exporting metrics from a Prometheus registry. It supports both text-based and Protobuf serialization formats.
+
+## Functions
+
+### print_as_text
+
+Serialises the registry using the [Prometheus text-based format](https://github.com/prometheus/docs/blob/main/content/docs/instrumenting/exposition_formats.md#text-format-example).
+
+```gleam
+pub fn print_as_text(registry_name registry_name: String) -> String
+```
+
+<ParamField path="registry_name" type="String" required>
+  The name of the registry to serialize
+</ParamField>
+
+#### Returns
+
+`String` - The metrics formatted as text in the Prometheus exposition format.
+
+#### Example
+
+```gleam
+import promgleam/registry
+import promgleam/metrics/counter
+
+pub fn main() {
+  let assert Ok(counter) = 
+    counter.new(
+      name: "http_requests_total",
+      registry: "default",
+      help: "Total HTTP requests",
+      labels: []
+    )
+  
+  counter.inc(counter, 1.0)
+  
+  let metrics_text = registry.print_as_text(registry_name: "default")
+  // Returns text format metrics
+}
+```
+
+### print_as_protobuf
+
+Serialises the registry using the [Prometheus Protobuf format](https://github.com/prometheus/docs/blob/main/content/docs/instrumenting/exposition_formats.md#protobuf-format).
+
+```gleam
+pub fn print_as_protobuf(registry_name registry_name: String) -> BitArray
+```
+
+<ParamField path="registry_name" type="String" required>
+  The name of the registry to serialize
+</ParamField>
+
+#### Returns
+
+`BitArray` - The metrics encoded in Prometheus Protobuf format.
+
+#### Example
+
+```gleam
+import promgleam/registry
+import promgleam/metrics/gauge
+
+pub fn main() {
+  let assert Ok(gauge) = 
+    gauge.new(
+      name: "temperature",
+      registry: "default",
+      help: "Current temperature",
+      labels: []
+    )
+  
+  gauge.set(gauge, 23.5)
+  
+  let metrics_protobuf = registry.print_as_protobuf(registry_name: "default")
+  // Returns binary protobuf data
+}
+```
+
+### clear_registry
+
+Removes all the previously registered metrics from a registry.
+
+```gleam
+pub fn clear_registry(name: String) -> Nil
+```
+
+<ParamField path="name" type="String" required>
+  The name of the registry to clear
+</ParamField>
+
+#### Returns
+
+`Nil` - This function always succeeds and returns `Nil`.
+
+#### Example
+
+```gleam
+import promgleam/registry
+import promgleam/metrics/counter
+
+pub fn main() {
+  // Register some metrics
+  let assert Ok(counter) = 
+    counter.new(
+      name: "requests",
+      registry: "default",
+      help: "Request count",
+      labels: []
+    )
+  
+  counter.inc(counter, 5.0)
+  
+  // Clear all metrics from the registry
+  registry.clear_registry("default")
+  
+  // Registry is now empty
+}
+```

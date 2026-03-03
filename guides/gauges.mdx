@@ -1,0 +1,264 @@
+---
+title: Gauges
+description: Learn how to create and update gauge metrics in PromGleam
+---
+
+A gauge is a metric that represents a single numerical value that can arbitrarily go up and down. Gauges are typically used for measured values like temperatures or current memory usage, but also "counts" that can go up and down, like the number of concurrent requests.
+
+## When to use gauges
+
+Use gauges to track:
+- Current memory usage
+- Number of concurrent requests
+- Cache size
+- Temperature readings
+- Queue length
+- Number of active connections
+
+<Info>
+  Unlike counters, gauges can both increase and decrease. If your metric only increases, use a counter instead.
+</Info>
+
+## Creating a gauge
+
+Use the `create_gauge` function to create a new gauge metric. You need to specify the registry name, metric name, help text, and label names.
+
+```gleam
+import promgleam/metrics/gauge.{create_gauge}
+
+create_gauge(
+  registry: "default",
+  name: "cache_size",
+  help: "Number of items in the cache",
+  labels: ["cache_name"],
+)
+```
+
+### Parameters
+
+- **registry**: The name of the registry to register the metric in (commonly `"default"`)
+- **name**: The metric name (should describe what is being measured)
+- **help**: A description of what the metric measures
+- **labels**: A list of label names for this metric
+
+<Info>
+  The `create_gauge` function returns `Result(Nil, String)`. If the metric already exists, you'll get an error.
+</Info>
+
+## Setting a gauge value
+
+Once you've created a gauge, use the `set_gauge` function to set its current value. You must provide label values that match the label names defined when creating the gauge.
+
+```gleam
+import promgleam/metrics/gauge.{set_gauge}
+
+set_gauge(
+  registry: "default",
+  name: "cache_size",
+  labels: ["image_cache"],
+  value: 123,
+)
+```
+
+### Parameters
+
+- **registry**: The registry name (must match the one used when creating the gauge)
+- **name**: The metric name (must match the one used when creating the gauge)
+- **labels**: Label values in the same order as the label names
+- **value**: The current value to set (can be any integer)
+
+<Warning>
+  The number of label values must match the number of label names defined when creating the gauge. If they don't match, you'll get an `InvalidMetricArity` error.
+</Warning>
+
+## Complete example
+
+Here's a complete example showing how to create and use a gauge to track cache size:
+
+```gleam
+import promgleam/metrics/gauge.{create_gauge, set_gauge}
+import gleam/dict.{type Dict}
+
+pub type Cache {
+  Cache(items: Dict(String, String))
+}
+
+pub fn setup_metrics() {
+  // Create the gauge once during application startup
+  let assert Ok(Nil) = create_gauge(
+    registry: "default",
+    name: "cache_size",
+    help: "Number of items in the cache",
+    labels: ["cache_name"],
+  )
+}
+
+pub fn add_to_cache(cache: Cache, key: String, value: String) -> Cache {
+  let new_cache = Cache(dict.insert(cache.items, key, value))
+  
+  // Update the gauge to reflect the current cache size
+  let cache_size = dict.size(new_cache.items)
+  let assert Ok(Nil) = set_gauge(
+    registry: "default",
+    name: "cache_size",
+    labels: ["main_cache"],
+    value: cache_size,
+  )
+  
+  new_cache
+}
+
+pub fn remove_from_cache(cache: Cache, key: String) -> Cache {
+  let new_cache = Cache(dict.delete(cache.items, key))
+  
+  // Update the gauge to reflect the current cache size
+  let cache_size = dict.size(new_cache.items)
+  let assert Ok(Nil) = set_gauge(
+    registry: "default",
+    name: "cache_size",
+    labels: ["main_cache"],
+    value: cache_size,
+  )
+  
+  new_cache
+}
+```
+
+## Error handling
+
+Both `create_gauge` and `set_gauge` return a `Result` type. Here are common errors you might encounter:
+
+<Tabs>
+  <Tab title="Metric already exists">
+    When trying to create a gauge that already exists:
+    
+    ```gleam
+    case create_gauge(
+      registry: "default",
+      name: "cache_size",
+      help: "Number of items in the cache",
+      labels: ["cache_name"],
+    ) {
+      Ok(Nil) -> io.println("Gauge created successfully")
+      Error(msg) -> io.println("Error: " <> msg)
+      // Error: Metric already exists
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Unknown metric">
+    When trying to set a gauge that doesn't exist:
+    
+    ```gleam
+    case set_gauge(
+      registry: "default",
+      name: "nonexistent_gauge",
+      labels: [],
+      value: 42,
+    ) {
+      Ok(Nil) -> io.println("Gauge set")
+      Error(msg) -> io.println("Error: " <> msg)
+      // Error: Unknown metric: nonexistent_gauge
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Invalid arity">
+    When the number of label values doesn't match the number of label names:
+    
+    ```gleam
+    case set_gauge(
+      registry: "default",
+      name: "cache_size",
+      labels: [],  // Missing cache_name label
+      value: 123,
+    ) {
+      Ok(Nil) -> io.println("Gauge set")
+      Error(msg) -> io.println("Error: " <> msg)
+      // Error: Invalid metric arity (labels mismatch): given 0, expected 1
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Tracking concurrent operations
+
+Gauges are commonly used to track the number of concurrent operations. Here's an example:
+
+```gleam
+import promgleam/metrics/gauge.{create_gauge, set_gauge}
+
+pub fn setup_metrics() {
+  let assert Ok(Nil) = create_gauge(
+    registry: "default",
+    name: "active_requests",
+    help: "Number of requests currently being processed",
+    labels: [],
+  )
+}
+
+pub fn handle_request(request_handler: fn() -> response, current_active: Int) {
+  // Increment the gauge when starting
+  let new_active = current_active + 1
+  let assert Ok(Nil) = set_gauge(
+    registry: "default",
+    name: "active_requests",
+    labels: [],
+    value: new_active,
+  )
+  
+  // Process the request
+  let response = request_handler()
+  
+  // Decrement the gauge when done
+  let final_active = new_active - 1
+  let assert Ok(Nil) = set_gauge(
+    registry: "default",
+    name: "active_requests",
+    labels: [],
+    value: final_active,
+  )
+  
+  response
+}
+```
+
+<Tip>
+  For tracking concurrent operations, you need to maintain the current count in your application state and update the gauge whenever it changes.
+</Tip>
+
+## Best practices
+
+<Steps>
+  <Step title="Create gauges once">
+    Create your gauges during application initialization, not every time you need to update them.
+  </Step>
+  
+  <Step title="Use descriptive names">
+    Make gauge names descriptive: `memory_usage_bytes`, `active_connections`, `queue_length`.
+  </Step>
+  
+  <Step title="Set the actual value">
+    Always set the gauge to the current absolute value, not a delta. Gauges represent the current state.
+  </Step>
+  
+  <Step title="Include units">
+    Include the unit in the metric name when applicable: `_bytes`, `_seconds`, `_celsius`.
+  </Step>
+</Steps>
+
+## Gauges vs counters
+
+<Note>
+  **Use a counter** when the value only increases (or resets to zero).
+  
+  **Use a gauge** when the value can both increase and decrease.
+</Note>
+
+| Metric | Type | Reason |
+|--------|------|--------|
+| Total HTTP requests | Counter | Only increases |
+| Active connections | Gauge | Can increase and decrease |
+| Memory usage | Gauge | Can increase and decrease |
+| Total errors | Counter | Only increases |
+| Queue length | Gauge | Can increase and decrease |
