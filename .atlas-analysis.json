@@ -1,0 +1,88 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "PromGleam",
+  "projectDescription": "A Prometheus client library for Gleam",
+  "theme": "aspen",
+  "primaryColor": "#ffaff3",
+  "lightColor": null,
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/metrics-overview",
+              "guides/counters",
+              "guides/gauges",
+              "guides/histograms",
+              "guides/buckets",
+              "guides/registries"
+            ]
+          },
+          {
+            "group": "Examples",
+            "pages": [
+              "examples/wisp-integration"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Metrics",
+            "pages": [
+              "api/counter",
+              "api/gauge",
+              "api/histogram"
+            ]
+          },
+          {
+            "group": "Utilities",
+            "pages": [
+              "api/buckets",
+              "api/registry",
+              "api/utils"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Counter metrics for monotonically increasing values",
+    "Gauge metrics for arbitrary numeric values",
+    "Histogram metrics with configurable buckets",
+    "Automatic time measurement for histograms",
+    "Text and Protobuf export formats",
+    "Built on prometheus.erl"
+  ],
+  "publicApiSurface": [
+    "promgleam/metrics/counter.create_counter",
+    "promgleam/metrics/counter.increment_counter",
+    "promgleam/metrics/gauge.create_gauge",
+    "promgleam/metrics/gauge.set_gauge",
+    "promgleam/metrics/histogram.create_histogram",
+    "promgleam/metrics/histogram.observe_histogram",
+    "promgleam/metrics/histogram.measure_histogram",
+    "promgleam/metrics/histogram.measure_histogram_seconds",
+    "promgleam/buckets.exponential",
+    "promgleam/buckets.linear",
+    "promgleam/registry.print_as_text",
+    "promgleam/registry.print_as_protobuf",
+    "promgleam/registry.clear_registry",
+    "promgleam/utils.measure"
+  ]
+}
